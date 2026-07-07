@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Abdurahman Billiard Trainer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- MQTT Configuration (optional) -->
+    <script src="config.js"></script>
+    <!-- MQTT.js Library -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-icon">🎱</div>
+            <h1>Abdurahman Billiard Trainer</h1>
+            <p>Panel Kontrol Pengeluaran Bola</p>
+        </div>
+
+        <!-- Mode Selection -->
+        <div class="card">
+            <div class="card-title">
+                <i class="fas fa-cog"></i>
+                Mode Operasi
+            </div>
+            <div class="mode-toggle">
+                <button class="mode-btn active" id="manualModeBtn">
+                    <i class="fas fa-hand-pointer"></i>
+                    <span>Manual</span>
+                </button>
+                <button class="mode-btn" id="autoModeBtn">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Otomatis</span>
+                </button>
+            </div>
+            <div class="mode-info" id="modeInfo">
+                <p><i class="fas fa-info-circle"></i> <strong>Manual:</strong> Aktif</p>
+            </div>
+            <button class="calibrate-btn" id="calibrateBtn">
+                <i class="fas fa-tools"></i> Kalibrasi PWM
+            </button>
+        </div>
+
+        <div class="connection-status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="connectionText">Menghubungkan...</span>
+        </div>
+
+        <!-- Sensor Cards Container -->
+        <div class="sensor-cards-container">
+            <!-- Card Bola Keluar (Laser) -->
+            <div class="card sensor-card">
+                <div class="card-title">
+                    <i class="fas fa-arrow-circle-up"></i>
+                    Bola Keluar
+                </div>
+                <div class="sensor-single">
+                    <div class="sensor-indicator-large" id="irUpIndicator">
+                        <i class="fas fa-arrow-circle-up"></i>
+                    </div>
+                    <div class="sensor-status-text" id="irUpState">CLEAR</div>
+                </div>
+            </div>
+
+            <!-- Card Bola Masuk (IR) -->
+            <div class="card sensor-card">
+                <div class="card-title">
+                    <i class="fas fa-arrow-circle-down"></i>
+                    Bola Masuk
+                </div>
+                <div class="sensor-single">
+                    <div class="sensor-indicator-large" id="irDownIndicator">
+                        <i class="fas fa-arrow-circle-down"></i>
+                    </div>
+                    <div class="sensor-status-text" id="irDownState">CLEAR</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-display">
+            <div class="status-row">
+                <span class="status-label"><i class="fas fa-crosshairs"></i> Mode</span>
+                <span class="status-value" id="modeDisplay">Manual</span>
+            </div>
+            <div class="status-row" id="targetBallsRow" style="display: none;">
+                <span class="status-label"><i class="fas fa-bullseye"></i> Target Bola</span>
+                <span class="status-value" id="selectedBalls">-</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label"><i class="fas fa-ruler"></i> Jarak Lontaran</span>
+                <span class="status-value" id="selectedDistance">60 cm</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label"><i class="fas fa-clock"></i> Status</span>
+                <span class="status-value" id="machineStatus">Siap</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label"><i class="fas fa-cog"></i> Motor</span>
+                <span class="status-value" id="motorStatus">OFF</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label"><i class="fas fa-drafting-compass"></i> Servo</span>
+                <span class="status-value" id="servoStatus">90°</span>
+            </div>
+        </div>
+
+        <div class="card" id="ballCountCard" style="display: none;">
+            <div class="card-title">
+                <i class="fas fa-bullseye"></i>
+                Jumlah Bola yang Akan Dikeluarkan
+            </div>
+            <div class="slider-container">
+                <div class="slider-header">
+                    <span class="slider-label">Jumlah</span>
+                    <span class="slider-value" id="ballCountValue">1</span>
+                </div>
+                <input type="range" id="ballCountSlider" min="1" max="9" value="1" step="1">
+                <div class="slider-marks">
+                    <span>1</span>
+                    <span>3</span>
+                    <span>6</span>
+                    <span>9</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="timerCard" style="display: none;">
+            <div class="card-title">
+                <i class="fas fa-stopwatch"></i>
+                Timer Periode (Otomatis)
+            </div>
+            <div class="timer-input-container">
+                <div class="timer-input-group">
+                    <label for="timerInput">Waktu Periode (detik):</label>
+                    <input type="number" id="timerInput" class="timer-input"
+                           min="0.1" step="0.1" placeholder="10" value="2">
+                    <div class="timer-current-display">
+                        <span class="timer-label">Timer Saat Ini:</span>
+                        <span class="timer-value" id="timerValueDisplay">2 detik</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <i class="fas fa-layer-group"></i>
+                Status Bola (Total: <span id="totalBallsCount">9</span>)
+            </div>
+            <div class="balls-remaining">
+                <div class="balls-counter">
+                    <div class="ball-change ball-in" id="ballInDisplay" style="display: none;">
+                        <i class="fas fa-arrow-down"></i> +<span id="ballsInCount">0</span>
+                    </div>
+                    <div class="ball-current">
+                        <i class="fas fa-layer-group"></i> Sisa Bola: <span id="ballsRemaining">0</span>
+                    </div>
+                    <div class="ball-change ball-out" id="ballOutDisplay" style="display: none;">
+                        <i class="fas fa-arrow-up"></i> -<span id="ballsOutCount">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <i class="fas fa-arrows-alt-h"></i>
+                Jarak Lontaran
+            </div>
+            <div class="distance-options">
+                <button class="distance-btn" data-distance="60" data-pwm="200">
+                    <span class="dist-label">60 cm</span>
+
+                </button>
+                <button class="distance-btn" data-distance="70" data-pwm="275">
+                    <span class="dist-label">70 cm</span>
+
+                </button>
+                <button class="distance-btn" data-distance="80" data-pwm="350">
+                    <span class="dist-label">80 cm</span>
+
+                </button>
+                <button class="distance-btn" data-distance="90" data-pwm="425">
+                    <span class="dist-label">90 cm</span>
+
+                </button>
+            </div>
+        </div>
+
+        <!-- Manual Mode Button -->
+        <button class="action-btn btn-start" id="manualFireBtn" style="display: block;">
+            <i class="fas fa-play"></i> Keluarkan Bola
+        </button>
+
+        <!-- Auto Mode Info -->
+        <div class="auto-mode-info" id="autoModeInfo" style="display: none;">
+            <div class="info-row">
+                <i class="fas fa-info-circle"></i>
+                <span>Mengeluarkan <strong id="autoBallCount">1</strong> bola ke jarak <strong id="autoDistance">60 cm</strong></span>
+            </div>
+            <div class="info-row">
+                <i class="fas fa-stopwatch"></i>
+                <span>Timer: <strong id="autoTimerDisplay">2</strong> detik/bola</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="autoProgress" style="width: 0%"></div>
+                </div>
+                <span class="progress-text" id="autoProgressText">0/1 bola</span>
+            </div>
+        </div>
+
+        <!-- Auto Mode Buttons -->
+        <button class="action-btn btn-start" id="autoStartBtn" style="display: none;">
+            <i class="fas fa-play"></i> Mulai Otomatis
+        </button>
+        <button class="action-btn btn-stop" id="stopBtn" style="display: none;">
+            <i class="fas fa-stop"></i> Berhenti
+        </button>
+
+        <!-- Reset Button -->
+        <button class="action-btn btn-reset" id="resetBtn">
+            <i class="fas fa-redo"></i> Reset Bola
+        </button>
+
+        <div class="footer">
+            <p>Created by <strong>OmanTechno</strong></p>
+        </div>
+    </div>
+
+    <!-- Floating Notifications -->
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <!-- PWM Calibration Modal -->
+    <div class="modal" id="calibrationModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-tools"></i> Kalibrasi PWM</h2>
+                <button class="modal-close" id="closeModalBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="calibration-info">
+                    <i class="fas fa-info-circle"></i>
+                    Atur nilai PWM untuk setiap jarak. Ukur dengan meteran untuk mendapatkan nilai yang tepat.
+                </p>
+                <div class="calibration-list">
+                    <div class="calibration-item">
+                        <label>Jarak 60 cm</label>
+                        <div class="pwm-input-group">
+                            <span>PWM:</span>
+                            <input type="number" id="pwm60" class="pwm-input" value="800" min="0" max="1023">
+                            <button class="test-pwm-btn" data-distance="60">
+                                <i class="fas fa-play"></i> Test
+                            </button>
+                        </div>
+                    </div>
+                    <div class="calibration-item">
+                        <label>Jarak 70 cm</label>
+                        <div class="pwm-input-group">
+                            <span>PWM:</span>
+                            <input type="number" id="pwm70" class="pwm-input" value="900" min="0" max="1023">
+                            <button class="test-pwm-btn" data-distance="70">
+                                <i class="fas fa-play"></i> Test
+                            </button>
+                        </div>
+                    </div>
+                    <div class="calibration-item">
+                        <label>Jarak 80 cm</label>
+                        <div class="pwm-input-group">
+                            <span>PWM:</span>
+                            <input type="number" id="pwm80" class="pwm-input" value="1000" min="0" max="1023">
+                            <button class="test-pwm-btn" data-distance="80">
+                                <i class="fas fa-play"></i> Test
+                            </button>
+                        </div>
+                    </div>
+                    <div class="calibration-item">
+                        <label>Jarak 90 cm</label>
+                        <div class="pwm-input-group">
+                            <span>PWM:</span>
+                            <input type="number" id="pwm90" class="pwm-input" value="1023" min="0" max="1023">
+                            <button class="test-pwm-btn" data-distance="90">
+                                <i class="fas fa-play"></i> Test
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn btn-cancel" id="cancelCalibrateBtn">Batal</button>
+                <button class="modal-btn btn-save" id="saveCalibrateBtn">
+                    <i class="fas fa-save"></i> Simpan
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
